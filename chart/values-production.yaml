@@ -80,10 +80,10 @@ startupProbe:
     command:
       - openclaw
       - health
-  initialDelaySeconds: 15
-  periodSeconds: 10
-  timeoutSeconds: 5
-  failureThreshold: 30
+  initialDelaySeconds: 30
+  periodSeconds: 30
+  timeoutSeconds: 20
+  failureThreshold: 5
   successThreshold: 1
 
 # PDB

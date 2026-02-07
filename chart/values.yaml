@@ -328,8 +328,8 @@ livenessProbe:
       - health
   initialDelaySeconds: 30
   periodSeconds: 30
-  timeoutSeconds: 10
-  failureThreshold: 3
+  timeoutSeconds: 20
+  failureThreshold: 5
   successThreshold: 1
 
 # -- Readiness probe configuration
@@ -339,10 +339,10 @@ readinessProbe:
     command:
       - openclaw
       - health
-  initialDelaySeconds: 10
-  periodSeconds: 10
-  timeoutSeconds: 5
-  failureThreshold: 3
+  initialDelaySeconds: 30
+  periodSeconds: 30
+  timeoutSeconds: 20
+  failureThreshold: 5
   successThreshold: 1
 
 # -- Startup probe configuration
@@ -352,10 +352,10 @@ startupProbe:
     command:
       - openclaw
       - health
-  initialDelaySeconds: 10
-  periodSeconds: 10
-  timeoutSeconds: 5
-  failureThreshold: 30
+  initialDelaySeconds: 30
+  periodSeconds: 30
+  timeoutSeconds: 20
+  failureThreshold: 5
   successThreshold: 1
 
 # -- Pod Disruption Budget configuration
