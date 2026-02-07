@@ -1,0 +1,470 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "openclaw.fullname" . }}
+  labels:
+    {{- include "openclaw.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  serviceName: {{ include "openclaw.fullname" . }}
+  selector:
+    matchLabels:
+      {{- include "openclaw.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") $ | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") $ | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "openclaw.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "openclaw.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        - name: init-openclaw-data
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              # First run: copy default data from image (extensions, etc.)
+              if [ -d /home/node/.openclaw ] && [ -z "$(ls -A /openclaw-data 2>/dev/null)" ]; then
+                cp -a /home/node/.openclaw/. /openclaw-data/
+              fi
+
+              # Ensure data directory exists
+              mkdir -p /openclaw-data/workspace
+
+              # Ensure extensions from image are present in PVC
+              # (handles image upgrades where new plugins are added)
+              if [ -d /home/node/.openclaw/extensions ]; then
+                mkdir -p /openclaw-data/extensions
+                for ext_dir in /home/node/.openclaw/extensions/*/; do
+                  ext_name=$(basename "$ext_dir")
+                  if [ ! -d "/openclaw-data/extensions/$ext_name" ]; then
+                    cp -a "$ext_dir" "/openclaw-data/extensions/$ext_name"
+                  fi
+                done
+              fi
+
+              # Seed config from ConfigMap
+              {{- if .Values.openclaw.forceReseedConfig }}
+              # Force reseed: overwrite existing config with ConfigMap version
+              if [ -f /etc/openclaw/openclaw.json ]; then
+                echo "Force reseeding config from ConfigMap (openclaw.forceReseedConfig=true)"
+                cp /etc/openclaw/openclaw.json /openclaw-data/openclaw.json
+              fi
+              {{- else }}
+              # Normal mode: only seed if config doesn't exist (preserves runtime changes)
+              if [ -f /etc/openclaw/openclaw.json ] && [ ! -f /openclaw-data/openclaw.json ]; then
+                echo "Seeding initial config from ConfigMap"
+                cp /etc/openclaw/openclaw.json /openclaw-data/openclaw.json
+              fi
+              {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /openclaw-data
+            - name: tmp
+              mountPath: /tmp
+            - name: config
+              mountPath: /etc/openclaw
+              readOnly: true
+      {{- with .Values.initContainers }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - openclaw
+            - gateway
+            - --verbose
+            - --bind
+            - lan
+            - --port
+            - {{ .Values.service.targetPort | quote }}
+            - --allow-unconfigured
+          ports:
+            - name: gateway
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+            {{- if .Values.service.bridgeEnabled }}
+            - name: bridge
+              containerPort: {{ .Values.service.bridgeTargetPort }}
+              protocol: TCP
+            {{- end }}
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: OPENCLAW_DATA_DIR
+              value: "/home/node/.openclaw"
+            {{- if .Values.secrets.existingSecret }}
+            # API Keys from existing secret
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: ANTHROPIC_API_KEY
+                  optional: true
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: OPENAI_API_KEY
+                  optional: true
+            - name: DISCORD_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: DISCORD_BOT_TOKEN
+                  optional: true
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: TELEGRAM_BOT_TOKEN
+                  optional: true
+            - name: SLACK_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: SLACK_BOT_TOKEN
+                  optional: true
+            - name: SLACK_APP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: SLACK_APP_TOKEN
+                  optional: true
+            - name: OPENCLAW_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: OPENCLAW_GATEWAY_TOKEN
+            # CN-IM channel secrets from existing secret
+            - name: FEISHU_APP_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: FEISHU_APP_ID
+                  optional: true
+            - name: FEISHU_APP_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: FEISHU_APP_SECRET
+                  optional: true
+            - name: DINGTALK_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: DINGTALK_CLIENT_ID
+                  optional: true
+            - name: DINGTALK_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: DINGTALK_CLIENT_SECRET
+                  optional: true
+            - name: DINGTALK_ROBOT_CODE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: DINGTALK_ROBOT_CODE
+                  optional: true
+            - name: DINGTALK_CORP_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: DINGTALK_CORP_ID
+                  optional: true
+            - name: DINGTALK_AGENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: DINGTALK_AGENT_ID
+                  optional: true
+            - name: QQBOT_APP_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: QQBOT_APP_ID
+                  optional: true
+            - name: QQBOT_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: QQBOT_CLIENT_SECRET
+                  optional: true
+            - name: WECOM_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: WECOM_TOKEN
+                  optional: true
+            - name: WECOM_ENCODING_AES_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: WECOM_ENCODING_AES_KEY
+                  optional: true
+            {{- else }}
+            # API Keys from created secret
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openclaw.secretName" . }}
+                  key: ANTHROPIC_API_KEY
+                  optional: true
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openclaw.secretName" . }}
+                  key: OPENAI_API_KEY
+                  optional: true
+            - name: DISCORD_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openclaw.secretName" . }}
+                  key: DISCORD_BOT_TOKEN
+                  optional: true
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openclaw.secretName" . }}
+                  key: TELEGRAM_BOT_TOKEN
+                  optional: true
+            - name: SLACK_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openclaw.secretName" . }}
+                  key: SLACK_BOT_TOKEN
+                  optional: true
+            - name: SLACK_APP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openclaw.secretName" . }}
+                  key: SLACK_APP_TOKEN
+                  optional: true
+            - name: OPENCLAW_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openclaw.secretName" . }}
+                  key: OPENCLAW_GATEWAY_TOKEN
+            # CN-IM channel secrets from created secret
+            - name: FEISHU_APP_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openclaw.secretName" . }}
+                  key: FEISHU_APP_ID
+                  optional: true
+            - name: FEISHU_APP_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openclaw.secretName" . }}
+                  key: FEISHU_APP_SECRET
+                  optional: true
+            - name: DINGTALK_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openclaw.secretName" . }}
+                  key: DINGTALK_CLIENT_ID
+                  optional: true
+            - name: DINGTALK_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openclaw.secretName" . }}
+                  key: DINGTALK_CLIENT_SECRET
+                  optional: true
+            - name: DINGTALK_ROBOT_CODE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openclaw.secretName" . }}
+                  key: DINGTALK_ROBOT_CODE
+                  optional: true
+            - name: DINGTALK_CORP_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openclaw.secretName" . }}
+                  key: DINGTALK_CORP_ID
+                  optional: true
+            - name: DINGTALK_AGENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openclaw.secretName" . }}
+                  key: DINGTALK_AGENT_ID
+                  optional: true
+            - name: QQBOT_APP_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openclaw.secretName" . }}
+                  key: QQBOT_APP_ID
+                  optional: true
+            - name: QQBOT_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openclaw.secretName" . }}
+                  key: QQBOT_CLIENT_SECRET
+                  optional: true
+            - name: WECOM_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openclaw.secretName" . }}
+                  key: WECOM_TOKEN
+                  optional: true
+            - name: WECOM_ENCODING_AES_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openclaw.secretName" . }}
+                  key: WECOM_ENCODING_AES_KEY
+                  optional: true
+            {{- end }}
+            - name: OPENCLAW_CONFIG_PATH
+              value: "/home/node/.openclaw/openclaw.json"
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.livenessProbe.enabled }}
+          livenessProbe:
+            exec:
+              command:
+                {{- toYaml .Values.livenessProbe.exec.command | nindent 16 }}
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
+            successThreshold: {{ .Values.livenessProbe.successThreshold }}
+          {{- end }}
+          {{- if .Values.readinessProbe.enabled }}
+          readinessProbe:
+            exec:
+              command:
+                {{- toYaml .Values.readinessProbe.exec.command | nindent 16 }}
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+            successThreshold: {{ .Values.readinessProbe.successThreshold }}
+          {{- end }}
+          {{- if .Values.startupProbe.enabled }}
+          startupProbe:
+            exec:
+              command:
+                {{- toYaml .Values.startupProbe.exec.command | nindent 16 }}
+            initialDelaySeconds: {{ .Values.startupProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.startupProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.startupProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.startupProbe.failureThreshold }}
+            successThreshold: {{ .Values.startupProbe.successThreshold }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /home/node/.openclaw
+            - name: tmp
+              mountPath: /tmp
+            - name: config
+              mountPath: /etc/openclaw
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+        {{- with .Values.sidecars }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: config
+          configMap:
+            name: {{ include "openclaw.configMapName" . }}
+        {{- if .Values.persistence.existingClaim }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim }}
+        {{- else if and .Values.persistence.enabled (eq .Values.persistence.type "hostPath") }}
+        - name: data
+          hostPath:
+            path: {{ .Values.persistence.hostPath }}
+            type: DirectoryOrCreate
+        {{- else if and .Values.persistence.enabled (eq .Values.persistence.type "pvc") (not .Values.persistence.useStatefulSetVolumeClaim) }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "openclaw.pvcName" . }}
+        {{- else if and .Values.persistence.enabled (eq .Values.persistence.type "pvc") }}
+        # When using StatefulSet volumeClaimTemplates, don't create extra volume
+        {{- else }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if and .Values.persistence.enabled (eq .Values.persistence.type "pvc") (not .Values.persistence.existingClaim) .Values.persistence.useStatefulSetVolumeClaim }}
+  {{- if semverCompare ">=1.25-0" .Capabilities.KubeVersion.Version }}
+  persistentVolumeClaimRetentionPolicy:
+    {{- if eq .Values.persistence.retainPolicy "Delete" }}
+    whenDeleted: Delete
+    whenScaled: Delete
+    {{- else }}
+    whenDeleted: Retain
+    whenScaled: Retain
+    {{- end }}
+  {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "openclaw.labels" . | nindent 10 }}
+        {{- with .Values.persistence.annotations }}
+        annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      spec:
+        accessModes:
+          - {{ .Values.persistence.accessMode }}
+        {{- if .Values.persistence.storageClass }}
+        storageClassName: {{ .Values.persistence.storageClass }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}
+  {{- end }}

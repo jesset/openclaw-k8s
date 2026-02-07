@@ -1,0 +1,74 @@
+# Minimal values for testing OpenClaw
+# Usage: helm install test chart/ -f chart/values-minimal.yaml --set secrets.openclawGatewayToken=test123
+
+# Use default CN-IM image
+image:
+  pullPolicy: IfNotPresent
+
+# Disable persistence for quick testing
+persistence:
+  enabled: false
+  type: pvc
+
+# Minimal resources
+resources:
+  limits:
+    cpu: 1000m
+    memory: 2Gi
+  requests:
+    cpu: 100m
+    memory: 512Mi
+
+# Relaxed security context for testing
+securityContext:
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: false
+  runAsUser: 0
+  allowPrivilegeEscalation: false
+
+podSecurityContext:
+  fsGroup: 0
+  runAsNonRoot: false
+
+# Minimal openclaw config
+openclaw:
+  config:
+    meta:
+      lastTouchedVersion: "2026.1.29"
+    update:
+      checkOnStart: false
+    browser:
+      headless: true
+      noSandbox: true
+      defaultProfile: "openclaw"
+      executablePath: "/usr/bin/chromium"
+    models:
+      mode: "merge"
+      providers: {}
+    agents:
+      defaults:
+        workspace: "/home/node/.openclaw/workspace"
+        compaction:
+          mode: "safeguard"
+        elevatedDefault: "full"
+        maxConcurrent: 2
+        subagents:
+          maxConcurrent: 4
+    commands:
+      native: "auto"
+      nativeSkills: "auto"
+    channels: {}
+    gateway:
+      port: 18789
+      mode: "local"
+      bind: "lan"
+      controlUi:
+        allowInsecureAuth: true
+    plugins:
+      entries: {}
+      installs: {}
+    logging:
+      level: "debug"

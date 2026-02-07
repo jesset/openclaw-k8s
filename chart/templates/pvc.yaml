@@ -1,0 +1,25 @@
+{{/*
+  PVC template for OpenClaw.
+  Only created when type=pvc and NOT using StatefulSet volumeClaimTemplates.
+*/}}
+{{- if and .Values.persistence.enabled (eq .Values.persistence.type "pvc") (not .Values.persistence.existingClaim) (not .Values.persistence.useStatefulSetVolumeClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "openclaw.pvcName" . }}
+  labels:
+    {{- include "openclaw.labels" . | nindent 4 }}
+  {{- with .Values.persistence.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.accessMode }}
+  {{- if .Values.persistence.storageClass }}
+  storageClassName: {{ .Values.persistence.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size }}
+{{- end }}

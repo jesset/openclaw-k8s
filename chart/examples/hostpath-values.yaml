@@ -1,0 +1,57 @@
+# Example values for using HostPath persistence
+# Suitable for single-node clusters or development environments
+
+# Use HostPath for persistence
+persistence:
+  enabled: true
+  type: hostPath
+  hostPath: /data/openclaw
+
+# Minimal resources for development
+resources:
+  limits:
+    cpu: 1000m
+    memory: 2Gi
+  requests:
+    cpu: 250m
+    memory: 512Mi
+
+# OpenClaw configuration
+openclaw:
+  config:
+    meta:
+      lastTouchedVersion: "2026.1.29"
+    update:
+      checkOnStart: false
+    browser:
+      headless: true
+      noSandbox: true
+      defaultProfile: "openclaw"
+      executablePath: "/usr/bin/chromium"
+    models:
+      mode: "merge"
+      providers: {}
+    agents:
+      defaults:
+        workspace: "/home/node/.openclaw/workspace"
+        compaction:
+          mode: "safeguard"
+        elevatedDefault: "full"
+        maxConcurrent: 4
+        subagents:
+          maxConcurrent: 8
+    commands:
+      native: "auto"
+      nativeSkills: "auto"
+    channels: {}
+    gateway:
+      port: 18789
+      mode: "local"
+      bind: "lan"
+      controlUi:
+        allowInsecureAuth: true
+    plugins:
+      entries: {}
+      installs: {}
+    logging:
+      level: "info"

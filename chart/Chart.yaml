@@ -1,0 +1,23 @@
+apiVersion: v2
+appVersion: "2026.2.3"
+description: OpenClaw on Kubernetes with CN-IM support (Feishu/DingTalk/QQ/WeCom)
+home: https://github.com/jesset/openclaw-k8s
+keywords:
+- openclaw
+- clawdbot
+- ai
+- assistant
+- gateway
+- feishu
+- dingtalk
+- wecom
+- qqbot
+name: openclaw
+sources:
+- https://github.com/jesset/openclaw-k8s
+- https://github.com/feiskyer/openclaw-kubernetes
+- https://github.com/justlovemaki/OpenClaw-Docker-CN-IM
+type: application
+version: 0.2.0
+maintainers:
+  - name: jesset

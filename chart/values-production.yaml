@@ -1,0 +1,137 @@
+# Production values for OpenClaw with CN-IM support
+# Usage: helm install openclaw chart/ -f chart/values-production.yaml --set secrets.openclawGatewayToken=<token>
+
+image:
+  pullPolicy: IfNotPresent
+
+# Persistent storage
+persistence:
+  enabled: true
+  type: pvc
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 20Gi
+  retainPolicy: Retain
+  useStatefulSetVolumeClaim: true
+
+# Production resources
+resources:
+  limits:
+    cpu: 4000m
+    memory: 16Gi
+  requests:
+    cpu: 500m
+    memory: 2Gi
+
+# Hardened security context
+podSecurityContext:
+  fsGroup: 1000
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1000
+  allowPrivilegeEscalation: false
+  seccompProfile:
+    type: RuntimeDefault
+
+# Ingress with TLS
+ingress:
+  enabled: false
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: openclaw.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: openclaw-tls
+      hosts:
+        - openclaw.example.com
+
+# Service
+service:
+  type: ClusterIP
+  port: 18789
+  targetPort: 18789
+  bridgeEnabled: false
+  bridgePort: 18790
+  bridgeTargetPort: 18790
+
+# Startup probe for slow starts
+startupProbe:
+  enabled: true
+  exec:
+    command:
+      - openclaw
+      - health
+  initialDelaySeconds: 15
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 30
+  successThreshold: 1
+
+# PDB
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+# Full openclaw config
+openclaw:
+  config:
+    meta:
+      lastTouchedVersion: "2026.1.29"
+    update:
+      checkOnStart: false
+    browser:
+      headless: true
+      noSandbox: true
+      defaultProfile: "openclaw"
+      executablePath: "/usr/bin/chromium"
+    models:
+      mode: "merge"
+      providers: {}
+    agents:
+      defaults:
+        workspace: "/home/node/.openclaw/workspace"
+        compaction:
+          mode: "safeguard"
+        elevatedDefault: "full"
+        maxConcurrent: 4
+        subagents:
+          maxConcurrent: 8
+    messages:
+      ackReactionScope: "group-mentions"
+      tts:
+        edge:
+          voice: "zh-CN-XiaoxiaoNeural"
+    commands:
+      native: "auto"
+      nativeSkills: "auto"
+    channels: {}
+    gateway:
+      port: 18789
+      mode: "local"
+      bind: "lan"
+      controlUi:
+        allowInsecureAuth: false
+    plugins:
+      entries: {}
+      installs: {}
+    logging:
+      level: "info"
