@@ -5,26 +5,28 @@ FROM node:22-slim
 # 安装运行时依赖（合并 RUN 层减少镜像体积）
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-    bash \
-    ca-certificates \
-    chromium \
-    curl \
-    fonts-liberation \
-    fonts-noto-cjk \
-    fonts-noto-color-emoji \
-    git \
-    jq \
-    python3 \
-    tini \
+  bash \
+  unzip \
+  vim \
+  ca-certificates \
+  chromium \
+  curl \
+  fonts-liberation \
+  fonts-noto-cjk \
+  fonts-noto-color-emoji \
+  git \
+  jq \
+  python3 \
+  tini \
   && rm -rf /var/lib/apt/lists/* \
   && npm install -g npm@latest \
-    openclaw@latest \
-    opencode-ai@latest \
-    playwright \
-    playwright-extra \
-    clawhub \
-    puppeteer-extra-plugin-stealth \
-    @steipete/bird \
+  openclaw@latest \
+  opencode-ai@latest \
+  playwright \
+  playwright-extra \
+  clawhub \
+  puppeteer-extra-plugin-stealth \
+  @steipete/bird \
   && npx playwright install chromium --with-deps
 
 # 创建目录并设置权限
@@ -32,18 +34,24 @@ RUN mkdir -p /home/node/.openclaw/workspace \
   && chown -R node:node /home/node
 
 ENV HOME=/home/node \
-    TERM=xterm-256color
+  TERM=xterm-256color
 
 EXPOSE 18789 18790
 
 WORKDIR /home/node
 
+# 安装bun到系统目录
+RUN curl -fsSL https://bun.com/install | BUN_INSTALL=/usr/local  bash
+
 USER node
 
 # 安装中国 IM 插件（忽略错误以防网络问题）
 RUN mkdir -p /home/node/.openclaw/extensions
+
+# Feishu 改为使用openclaw内置
 # RUN timeout 300 openclaw plugins install @m1heng-clawd/feishu || true
 RUN timeout 300 openclaw plugins install @openclaw/feishu
+
 RUN timeout 300 openclaw plugins install https://github.com/soimy/clawdbot-channel-dingtalk.git || true
 RUN cd /tmp \
   && git clone https://github.com/justlovemaki/qqbot.git \
