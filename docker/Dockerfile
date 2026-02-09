@@ -25,6 +25,7 @@ RUN apt-get update \
   playwright \
   playwright-extra \
   clawhub \
+  firecrawl-cli \
   puppeteer-extra-plugin-stealth \
   @steipete/bird \
   && npx playwright install chromium --with-deps
