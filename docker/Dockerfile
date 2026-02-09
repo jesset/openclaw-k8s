@@ -58,7 +58,7 @@ RUN cd /tmp \
   && cd qqbot \
   && timeout 300 openclaw plugins install . || true \
   && rm -rf /tmp/qqbot
-RUN timeout 300 openclaw plugins install openclaw-plugin-wecom || true
+RUN timeout 300 openclaw plugins install @sunnoy/wecom
 
 ENTRYPOINT ["tini", "--"]
 CMD ["openclaw", "gateway", "--verbose"]
