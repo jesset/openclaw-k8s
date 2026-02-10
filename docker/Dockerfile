@@ -5,12 +5,9 @@ FROM node:22-slim
 # 安装运行时依赖（合并 RUN 层减少镜像体积）
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-  bash \
-  unzip \
-  vim \
+  bash unzip vim file ffmpeg curl \
   ca-certificates \
   chromium \
-  curl \
   fonts-liberation \
   fonts-noto-cjk \
   fonts-noto-color-emoji \
